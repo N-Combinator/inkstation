@@ -1,0 +1,13 @@
+# Build output
+build/
+*.app
+!src/
+
+# Editor / OS cruft
+.DS_Store
+*.swp
+*.o
+
+# Local device config / secrets (RTT refresh token lives on the device, never in git)
+*.conf
+inkstation.cfg

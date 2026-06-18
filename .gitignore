@@ -8,6 +8,9 @@ build/
 *.swp
 *.o
 
-# Local device config / secrets (RTT refresh token lives on the device, never in git)
+# Local device config / secrets — the RTT API token must NEVER be committed.
+# deploy.sh reads rtt_token.txt (or $RTT_TOKEN / --rtt-token) and writes it to
+# the device config at deploy time.
 *.conf
 inkstation.cfg
+rtt_token.txt

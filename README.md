@@ -89,24 +89,48 @@ the Applications menu.
 
 ## Configuration
 
-InkStation reads its configuration from:
+InkStation reads its RTT API token at startup from the on-device config file:
 
 ```
 /mnt/ext1/system/config/inkstation.conf
 ```
 
-Create this file on the SD card (or let InkStation create the directory structure on first run) with your RTT API credential:
+containing one line:
 
 ```
-rtt_refresh_token=rttapi_<username>:<password>
+rtt_refresh_token=<your RTT API token>
 ```
 
-The credential is stored only on the device and never leaves it. The `rttapi_` prefix is the standard RTT API username format; the full value is `username:password` sent as HTTP Basic auth.
+The token may be either a **Bearer token** (e.g. an `eyJ...` JWT) or
+`user:pass` for **HTTP Basic** — the app chooses the scheme automatically based
+on whether the value contains a `:`. The token is stored only on the device and
+is **never committed to the repo or baked into the binary**. If it is missing,
+station boards show *"No RTT token set"*.
 
-To regenerate the bundled station list (developer only):
+### Provisioning the token (recommended)
+
+`deploy.sh` writes the config file to the device for you, so you don't have to
+create it by hand. Supply the token one of three ways (checked in order):
 
 ```bash
-RTT_REFRESH_TOKEN=rttapi_<user>:<pass> python3 tools/gen_stations.py > src/stations.h
+./deploy.sh --usb --rtt-token 'eyJ...'      # explicit flag
+RTT_TOKEN='eyJ...' ./deploy.sh --usb         # environment variable
+echo 'eyJ...' > rtt_token.txt && ./deploy.sh --usb   # gitignored local file
+```
+
+`rtt_token.txt` is in `.gitignore` and never leaves your machine. The same
+applies to `--wifi --ssh` deploys (the token is written over SSH). The
+`--http-drop` method cannot write the token — set it via USB/SSH or by hand.
+
+### By hand
+
+Alternatively, create `/mnt/ext1/system/config/inkstation.conf` on the SD card
+yourself with the `rtt_refresh_token=...` line above.
+
+### Regenerating the station list (developer only)
+
+```bash
+RTT_REFRESH_TOKEN='<token>' python3 tools/gen_stations.py > src/stations.h
 ```
 
 ## Usage

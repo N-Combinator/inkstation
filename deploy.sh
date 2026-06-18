@@ -43,6 +43,8 @@ DEPLOY_ENDPOINT="/deploy"
 SSH_USER="root"
 SSH_PORT=22
 APP_DEST="/mnt/ext1/applications/inkstation.app"
+CONF_DEST="/mnt/ext1/system/config/inkstation.conf"
+CONF_KEY="rtt_refresh_token"          # must match config.h CONFIG_KEY_RTT_TOKEN
 
 # ---- defaults / argument parsing --------------------------------------------
 MODE="usb"            # usb | wifi
@@ -53,6 +55,7 @@ DO_FIND=0
 BUILD_ONLY=0
 PB_IP=""
 PIN=""
+RTT_TOKEN_ARG=""
 
 usage() {
   sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
@@ -70,6 +73,8 @@ while [ $# -gt 0 ]; do
     --ip=*)       PB_IP="${1#--ip=}" ;;
     --pin)        shift; PIN="${1:-}" ;;
     --pin=*)      PIN="${1#--pin=}" ;;
+    --rtt-token)  shift; RTT_TOKEN_ARG="${1:-}" ;;
+    --rtt-token=*) RTT_TOKEN_ARG="${1#--rtt-token=}" ;;
     --pull)       DO_PULL=1; DO_BUILD=1 ;;
     --no-build)   DO_BUILD=0 ;;
     --build-only) BUILD_ONLY=1 ;;
@@ -114,6 +119,50 @@ find_device() {
   return 1
 }
 
+# ---- RTT token -------------------------------------------------------------
+# The API token is a SECRET and is never committed. Resolve it from, in order:
+#   1. --rtt-token <tok>
+#   2. $RTT_TOKEN in the environment
+#   3. a gitignored rtt_token.txt in the project root (first non-comment line)
+# When found, deploy writes it into the device config so the app can read it at
+# runtime (config key rtt_refresh_token) — fixing "NO RTT key" when the config
+# file was never shipped with the .app. The value may be a Bearer token (JWT) or
+# "user:pass" for HTTP Basic; the app picks the scheme by the presence of ':'.
+resolve_token() {
+  if [ -n "$RTT_TOKEN_ARG" ]; then echo "$RTT_TOKEN_ARG"; return 0; fi
+  if [ -n "${RTT_TOKEN:-}" ]; then echo "$RTT_TOKEN"; return 0; fi
+  local f="$PROJECT/rtt_token.txt"
+  if [ -f "$f" ]; then
+    grep -vE '^\s*(#|$)' "$f" | head -n1 | tr -d '[:space:]'
+    return 0
+  fi
+  echo ""
+}
+
+# Provision the token into the device config. $1 = "usb:<mount>" or "ssh".
+provision_token() {
+  local where="$1" token
+  token=$(resolve_token)
+  if [ -z "$token" ]; then
+    echo "!! no RTT token supplied — the app will show 'NO RTT key' until one is set."
+    echo "   Provide it with --rtt-token <tok>, \$RTT_TOKEN, or rtt_token.txt, OR"
+    echo "   create $CONF_DEST on the device with: $CONF_KEY=<token>"
+    return 0
+  fi
+  case "$where" in
+    usb:*)
+      local mount="${where#usb:}"
+      mkdir -p "${mount}system/config"
+      printf '%s=%s\n' "$CONF_KEY" "$token" > "${mount}${CONF_DEST#/mnt/ext1/}"
+      sync
+      echo ">> wrote RTT token to ${mount}${CONF_DEST#/mnt/ext1/}" ;;
+    ssh)
+      ssh -p "$SSH_PORT" "$SSH_USER@$PB_IP" \
+        "mkdir -p '$(dirname "$CONF_DEST")' && printf '%s=%s\n' '$CONF_KEY' '$token' > '$CONF_DEST'" \
+        && echo ">> wrote RTT token to $CONF_DEST on the device" ;;
+  esac
+}
+
 # ---- build -------------------------------------------------------------------
 build_app() {
   export PATH="$SDK/usr/bin:$PATH"
@@ -156,6 +205,7 @@ deploy_usb() {
   cp "$APP" "${mount}applications/"
   sync
   echo ">> deployed: ${mount}applications/inkstation.app"
+  provision_token "usb:${mount}"
   echo ">> safely eject the device, then launch InkStation from Applications."
 }
 
@@ -163,6 +213,7 @@ deploy_usb() {
 deploy_wifi_ssh() {
   echo ">> mode: WiFi / SCP → $SSH_USER@$PB_IP:$APP_DEST"
   scp -P "$SSH_PORT" "$APP" "$SSH_USER@$PB_IP:$APP_DEST"
+  provision_token "ssh"
   echo ">> installed. Relaunch from the Applications menu (or via SSH)."
   ssh -p "$SSH_PORT" "$SSH_USER@$PB_IP" \
     "killall inkstation.app 2>/dev/null; true" || true
@@ -173,6 +224,8 @@ deploy_wifi_http() {
   echo ">> mode: WiFi / HTTP POST → http://$PB_IP:$INKSHELF_PORT$DEPLOY_ENDPOINT"
   echo "!! NOTE: inkshelf's /deploy writes to applications/inkshelf.app — this"
   echo "   REPLACES inkshelf with the InkStation binary. Use --ssh to keep both."
+  echo "!! NOTE: this method cannot write the RTT token to the device. Set it via"
+  echo "   --usb/--ssh, or create $CONF_DEST with $CONF_KEY=<token> by hand."
   local pin_args=()
   [ -n "$PIN" ] && pin_args=(-H "X-Inkshelf-PIN:$PIN")
 

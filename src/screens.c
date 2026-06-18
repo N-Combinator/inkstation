@@ -106,10 +106,12 @@ static void search_draw(screen_t *self)
 
     ui_list_draw(&d->list);
 
-    if (d->query[0])
-        ui_draw_footer("OK: open board   \xE2\x80\xA2   tap bar to edit");
-    else
-        ui_draw_footer("Press OK or tap the bar to search a station");
+    /* Visible debug indicator: shows the captured query and how many stations
+     * matched, so a tester can confirm keystrokes reach the filter on-device. */
+    char foot[160];
+    snprintf(foot, sizeof foot, "q=\"%s\"  matches=%d   \xE2\x80\xA2   OK: open  \xE2\x80\xA2  tap bar: edit",
+             d->query, d->n);
+    ui_draw_footer(foot);
 
     ui_flush_full();
 
@@ -130,9 +132,19 @@ static void search_draw(screen_t *self)
 static void search_kbd_cb(char *text)
 {
     if (!g_active_search) return;
-    if (text)
+
+    /* OpenKeyboard was given d->query as its text buffer, so `text` is normally
+     * that SAME pointer. snprintf(query, "%s", text) would then copy a buffer
+     * onto itself (overlapping src/dst == undefined behaviour) — on the device
+     * that left the query blank, so the filter matched every station and the
+     * list never changed. Copy through a temp so src and dst never alias; if the
+     * firmware handed back a different (non-aliasing) buffer this still works. */
+    if (text) {
+        char tmp[sizeof g_active_search->query];
+        snprintf(tmp, sizeof tmp, "%s", text);
         snprintf(g_active_search->query, sizeof g_active_search->query,
-                 "%s", text);
+                 "%s", tmp);
+    }
     search_rebuild(g_active_search);
     dbg_log("search: query='%s' -> %d match(es)",
             g_active_search->query, g_active_search->n);

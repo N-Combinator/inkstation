@@ -20,6 +20,7 @@ add_executable(inkstation.app
     src/cJSON.c
     src/http.c
     src/net.c
+    src/dbg.c
 )
 
 target_include_directories(inkstation.app PRIVATE

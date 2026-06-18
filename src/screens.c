@@ -8,6 +8,7 @@
  */
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -15,6 +16,7 @@
 
 #include "app.h"
 #include "config.h"
+#include "dbg.h"
 #include "net.h"
 #include "rtt.h"
 #include "screens.h"
@@ -52,11 +54,15 @@ typedef struct {
     ui_list list;
     ui_list_item items[SEARCH_MAX];
     char secondary[SEARCH_MAX][16];   /* CRS text per row */
+    int want_kbd;                     /* auto-open the keyboard once, post-init */
+    int shows_seen;                   /* on_show calls so far (defer past init) */
 } search_data;
 
 /* The InkView keyboard callback has no user pointer, so the active search
  * screen registers itself here for the duration of an open keyboard. */
 static search_data *g_active_search;
+
+static void search_open_keyboard(screen_t *self);
 
 static void search_rebuild(search_data *d)
 {
@@ -100,9 +106,22 @@ static void search_draw(screen_t *self)
     if (d->query[0])
         ui_draw_footer("OK: open board   \xE2\x80\xA2   tap bar to edit");
     else
-        ui_draw_footer("Tap the search bar to type a station name");
+        ui_draw_footer("Press OK or tap the bar to search a station");
 
     ui_flush_full();
+
+    /* Auto-open the keyboard once, but only AFTER the app has finished
+     * initialising. OpenKeyboard() called from within EVT_INIT (the first paint,
+     * driven by nav_push in the init handler) silently does nothing on
+     * PocketBook firmware — that was the "type a station and nothing happens"
+     * bug. The first on_show runs inside EVT_INIT; the keyboard is opened on the
+     * next one (the real EVT_SHOW), when the event loop is live. A tap or OK key
+     * is the manual fallback. */
+    d->shows_seen++;
+    if (d->want_kbd && d->shows_seen >= 2) {
+        d->want_kbd = 0;
+        search_open_keyboard(self);
+    }
 }
 
 static void search_kbd_cb(char *text)
@@ -112,6 +131,8 @@ static void search_kbd_cb(char *text)
         snprintf(g_active_search->query, sizeof g_active_search->query,
                  "%s", text);
     search_rebuild(g_active_search);
+    dbg_log("search: query='%s' -> %d match(es)",
+            g_active_search->query, g_active_search->n);
 
     screen_t *cur = nav_current();
     if (cur && cur->data == g_active_search && cur->on_show)
@@ -122,6 +143,7 @@ static void search_open_keyboard(screen_t *self)
 {
     search_data *d = self->data;
     g_active_search = d;
+    dbg_log("search: opening keyboard (query='%s')", d->query);
     OpenKeyboard("Search station", d->query,
                  (int)sizeof(d->query) - 1, 0, search_kbd_cb);
 }
@@ -129,8 +151,14 @@ static void search_open_keyboard(screen_t *self)
 static void search_open_selected(screen_t *self)
 {
     search_data *d = self->data;
-    if (d->n == 0) return;
+    if (d->n == 0) {
+        /* Nothing to open yet — treat OK as "let me search". */
+        search_open_keyboard(self);
+        return;
+    }
     int idx = d->results[d->list.selected];
+    dbg_log("search: selected '%s' -> CRS %s",
+            STATIONS[idx].name, STATIONS[idx].crs);
     nav_push(screen_board(STATIONS[idx].crs, STATIONS[idx].name,
                           RTT_DEPARTURES));
 }
@@ -139,14 +167,18 @@ static void search_on_enter(screen_t *self)
 {
     search_data *d = self->data;
     g_active_search = d;
-    /* First time in (no query yet): pop the keyboard straight away so the user
-     * lands ready to type. */
-    if (!d->query[0]) search_open_keyboard(self);
+    /* Arm the auto-keyboard for the first visit (no query yet). It is actually
+     * opened from search_draw on the first post-init paint — see the comment
+     * there for why it cannot be opened here (inside EVT_INIT). */
+    if (!d->query[0]) d->want_kbd = 1;
 }
 
 static int search_on_key(screen_t *self, int key)
 {
     search_data *d = self->data;
+    /* The Menu key is a dedicated "search" trigger on models that have it. */
+    if (key == IV_KEY_MENU) { search_open_keyboard(self); return 1; }
+
     switch (ui_nav_classify(key)) {
     case UI_NAV_UP:        if (ui_list_move(&d->list, -1)) search_draw(self); return 1;
     case UI_NAV_DOWN:      if (ui_list_move(&d->list, +1)) search_draw(self); return 1;
@@ -333,15 +365,20 @@ static void board_refresh(screen_t *self)
     d->state = BOARD_LOADING;
     board_draw(self);   /* shows "Loading…" immediately */
 
-    net_ensure_online();
+    dbg_log("board: fetch CRS=%s mode=%s token=%s",
+            d->crs, d->mode == RTT_ARRIVALS ? "arrivals" : "departures",
+            rtt_has_credential() ? "set" : "MISSING");
+    net_ensure_online();   /* assert WiFi before the API call */
     char err[160] = {0};
     int rc = rtt_fetch(d->crs, d->mode, &d->board, err, sizeof err);
     if (rc != 0) {
         d->state = BOARD_ERROR;
         snprintf(d->err, sizeof d->err, "%s", err);
+        dbg_log("board: fetch FAILED — %s", err);
     } else {
         d->state = BOARD_OK;
         board_build_items(d);
+        dbg_log("board: fetch ok — %d service(s)", d->board.count);
         /* Remember the last station for next launch. */
         config_set(CONFIG_KEY_LAST_CRS, d->crs);
     }

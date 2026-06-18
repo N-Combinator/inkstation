@@ -28,10 +28,64 @@ cmake --build build
 # Produces: build/inkstation.app
 ```
 
-## Installation
+## Deploy
 
-1. Copy `inkstation.app` to the PocketBook SD card under `applications/`.
-2. Reboot or use the app launcher to find **InkStation**.
+`deploy.sh` is a one-command **pull → build → install** for the device, with a
+flag to choose wired (USB) or wireless (WiFi). It defaults the project dir to its
+own location and the SDK to `$PB_SDK_ROOT` (or `~/pocketbook-sdk/SDK-B288`).
+
+```bash
+./deploy.sh                            # wired: build + copy over USB (default)
+./deploy.sh --usb --pull               # git pull, clean rebuild, copy over USB
+./deploy.sh --wifi --find              # wireless: build + install to auto-detected device
+./deploy.sh --wifi --ip 192.168.1.42   # wireless: build + install to a known IP
+./deploy.sh --build-only               # just cross-compile, don't install
+```
+
+Or via the `Makefile`: `make deploy`, `make deploy-wifi IP=...`, `make build`, `make test`.
+
+### Wired (USB)
+
+1. Connect the reader over USB and allow storage access on the device.
+2. `./deploy.sh --usb` — builds, then copies `build/inkstation.app` into the
+   device's mounted `applications/` folder (auto-detected under `/media/$USER/*/`).
+3. Safely eject, then launch **InkStation** from the Applications menu.
+
+### Wireless (WiFi)
+
+The wireless mode installs over the network. You must first set up a **WiFi drop
+point** on the reader — this is what receives the binary:
+
+> **Set up the drop point first.** Install [**inkshelf**](https://github.com/N-Combinator/inkshelf)
+> on the reader and open its **WiFi Book Drop** screen — that is the WiFi-drop
+> server InkStation deploys through (it advertises over mDNS so `--find` can
+> locate the device). See the inkshelf README for setup and the PIN.
+
+Two methods:
+
+```bash
+# (default) SCP the binary to applications/inkstation.app and relaunch.
+# Installs InkStation as its own app. Needs sshd on the reader (PocketBook
+# jailbreak / PBJB sshd).
+./deploy.sh --wifi --find            # or: --ip <device-ip>
+./deploy.sh --wifi --ip 192.168.1.42 --ssh
+
+# Push to inkshelf's WiFi-drop HTTP endpoint (parity with inkshelf's tooling).
+./deploy.sh --wifi --http-drop --ip 192.168.1.42 --pin 1234
+```
+
+> **`--http-drop` caveat.** inkshelf's `/deploy` endpoint writes the upload to
+> `applications/inkshelf.app` (it is inkshelf's own self-update path), so it
+> **replaces inkshelf** with the InkStation binary rather than installing a
+> separate `inkstation.app`. To run InkStation *alongside* inkshelf, use the
+> default `--ssh` method (or install once over USB). `--http-drop` is provided
+> for parity with inkshelf's deploy tooling.
+
+## Manual installation
+
+If you prefer not to use `deploy.sh`: copy `build/inkstation.app` to the
+PocketBook SD card under `applications/`, eject, and launch **InkStation** from
+the Applications menu.
 
 ## Configuration
 
@@ -96,4 +150,6 @@ tools/
 tests/
   test_rtt.c        rtt_parse unit tests (host, no SDK needed)
   run_host_tests.sh Test runner
+deploy.sh           one-command pull/build/install (USB or WiFi)
+Makefile            convenience targets wrapping deploy.sh
 ```

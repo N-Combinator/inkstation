@@ -44,7 +44,10 @@ static int contains_ci(const char *hay, const char *needle)
 /* Station search (root screen)                                       */
 /* ================================================================== */
 
-#define SEARCH_MAX 250
+/* Hold every station: with an empty query the list shows the whole bundle, so a
+ * smaller cap silently truncated browsing (it stopped at the 250th station,
+ * "Bingham"). Sized to the generated list so nothing is ever dropped. */
+#define SEARCH_MAX STATION_COUNT
 #define SEARCH_BAR_H 64
 
 typedef struct {

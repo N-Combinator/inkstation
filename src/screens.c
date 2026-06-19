@@ -383,7 +383,15 @@ static void board_refresh(screen_t *self)
     dbg_log("board: fetch CRS=%s mode=%s token=%s",
             d->crs, d->mode == RTT_ARRIVALS ? "arrivals" : "departures",
             rtt_has_credential() ? "set" : "MISSING");
-    net_ensure_online();   /* assert WiFi before the API call */
+    /* Assert WiFi and WAIT for the link to actually come up before firing the
+     * request. The firmware powers the radio down on idle and NetConnect()
+     * returns before the interface is routable, so a request sent immediately
+     * is refused at once ("connection refused after 5ms"). net_wait_online()
+     * re-asserts and polls the connection state; http_get() also re-asserts and
+     * settles between retries as a backstop. */
+    net_ensure_online();
+    int online = net_wait_online(NET_WAIT_TIMEOUT_MS, NET_WAIT_POLL_MS);
+    dbg_log("board: WiFi %s before fetch", online ? "online" : "NOT online");
     char err[160] = {0};
     int rc = rtt_fetch(d->crs, d->mode, &d->board, err, sizeof err);
     if (rc != 0) {

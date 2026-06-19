@@ -22,9 +22,16 @@
 #include "net.h"
 
 #define HTTP_UA       "inkstation/1.0 (PocketBook)"
-#define HTTP_RETRIES  2            /* extra attempts on transient WiFi errors */
+#define HTTP_RETRIES  3            /* extra attempts on transient WiFi errors */
 #define HTTP_TIMEOUT  30L
 #define HTTP_MAX_BODY (4 * 1024 * 1024)   /* 4 MB cap — line-ups are tens of KB */
+
+/* Settle delay before a retry. QueryNetwork() can report NET_CONNECTED before
+ * the link is actually routable, so a retry fired the instant the previous one
+ * failed just races the still-waking radio (the "connection refused after 5ms"
+ * symptom). Wait this long — and re-assert the radio — before each retry so the
+ * firmware has time to bring the interface fully up. */
+#define HTTP_RETRY_SETTLE_MS 1500
 
 #ifndef HTTP_LOG_PATH
 #define HTTP_LOG_PATH "/mnt/ext1/inkstation.log"
@@ -178,7 +185,21 @@ int http_get(const char *url, const char *bearer,
     CURLcode rc = CURLE_OK;
     int offline = 0;
     for (int attempt = 0; attempt <= HTTP_RETRIES; attempt++) {
-        if (attempt > 0) membuf_reset(&m);
+        if (attempt > 0) {
+            membuf_reset(&m);
+            /* The previous attempt failed transiently — most likely it fired
+             * before the radio was actually routable (QueryNetwork() reports
+             * NET_CONNECTED optimistically). Re-assert the radio and wait a real
+             * settle interval before retrying, rather than racing it again. */
+            http_log("  prev attempt rc=%d — re-asserting WiFi, settling %dms",
+                     rc, HTTP_RETRY_SETTLE_MS);
+            net_ensure_online();
+            struct timespec settle = {
+                HTTP_RETRY_SETTLE_MS / 1000,
+                (long)(HTTP_RETRY_SETTLE_MS % 1000) * 1000000L
+            };
+            nanosleep(&settle, NULL);
+        }
 
         if (!net_wait_online(NET_WAIT_TIMEOUT_MS, NET_WAIT_POLL_MS)) {
             http_log("  WiFi did not reconnect within %dms — aborting",

@@ -3,7 +3,8 @@
  *
  * Pure C, no InkView / libcurl: compile and run on the build host with
  *   tests/run_host_tests.sh
- * exercising the JSON parser that backs the live board screen.
+ * exercising the JSON parser that backs the live board screen. Fixtures match
+ * the Realtime Trains "Next Generation" API (/gb-nr/location) response shape.
  */
 
 #include <stdio.h>
@@ -32,81 +33,80 @@ static int g_fail;
 
 #define STREQ(a, b) ((a) && (b) && strcmp((a), (b)) == 0)
 
-/* ---- fixtures ------------------------------------------------------ */
+/* ---- fixtures (Next Gen /gb-nr/location shape) --------------------- */
 
-/* Minimal departures response: two services, one on time, one delayed. */
+/* Two departures: one on time, one delayed. */
 static const char DEP_JSON[] =
 "{"
-"  \"location\": { \"name\": \"Guildford\", \"crs\": \"GLD\" },"
+"  \"query\": { \"location\": {"
+"      \"description\": \"Guildford\", \"shortCodes\": [\"GLD\"] } },"
 "  \"services\": ["
-"    { \"locationDetail\": {"
-"        \"gbttBookedDeparture\": \"1010\","
-"        \"realtimeDeparture\": \"1010\","
-"        \"platform\": \"2\","
-"        \"displayAs\": \"CALL\","
-"        \"destination\": [ { \"description\": \"London Waterloo\" } ]"
-"      },"
-"      \"atocName\": \"South Western Railway\" },"
-"    { \"locationDetail\": {"
-"        \"gbttBookedDeparture\": \"1025\","
-"        \"realtimeDeparture\": \"1031\","
-"        \"platform\": \"\","
-"        \"displayAs\": \"CALL\","
-"        \"destination\": [ { \"description\": \"Weybridge\" } ]"
-"      },"
-"      \"atocName\": \"South Western Railway\" }"
+"    { \"scheduleMetadata\": { \"operator\": { \"name\": \"South Western Railway\" } },"
+"      \"temporalData\": {"
+"        \"departure\": { \"scheduleAdvertised\": \"2026-06-19T21:39:00\","
+"                       \"realtimeForecast\": \"2026-06-19T21:39:00\","
+"                       \"isCancelled\": false },"
+"        \"displayAs\": \"CALL\" },"
+"      \"locationMetadata\": { \"platform\": { \"planned\": \"3\" } },"
+"      \"destination\": [ { \"location\": { \"description\": \"London Waterloo\" } } ] },"
+"    { \"scheduleMetadata\": { \"operator\": { \"name\": \"South Western Railway\" } },"
+"      \"temporalData\": {"
+"        \"departure\": { \"scheduleAdvertised\": \"2026-06-19T21:50:00\","
+"                       \"realtimeForecast\": \"2026-06-19T21:56:00\","
+"                       \"isCancelled\": false },"
+"        \"displayAs\": \"CALL\" },"
+"      \"locationMetadata\": { \"platform\": { \"forecast\": \"5\" } },"
+"      \"destination\": [ { \"location\": { \"description\": \"Weybridge\" } } ] }"
 "  ]"
 "}";
 
-/* Arrivals response: one service. */
+/* One arrival. */
 static const char ARR_JSON[] =
 "{"
-"  \"location\": { \"name\": \"Guildford\", \"crs\": \"GLD\" },"
+"  \"query\": { \"location\": {"
+"      \"description\": \"Guildford\", \"shortCodes\": [\"GLD\"] } },"
 "  \"services\": ["
-"    { \"locationDetail\": {"
-"        \"gbttBookedArrival\": \"0942\","
-"        \"realtimeArrival\": \"0942\","
-"        \"platform\": \"3\","
-"        \"displayAs\": \"CALL\","
-"        \"origin\": [ { \"description\": \"London Waterloo\" } ]"
-"      },"
-"      \"atocName\": \"South Western Railway\" }"
+"    { \"scheduleMetadata\": { \"operator\": { \"name\": \"South Western Railway\" } },"
+"      \"temporalData\": {"
+"        \"arrival\": { \"scheduleAdvertised\": \"2026-06-19T09:42:00\","
+"                     \"realtimeForecast\": \"2026-06-19T09:42:00\","
+"                     \"isCancelled\": false },"
+"        \"displayAs\": \"CALL\" },"
+"      \"locationMetadata\": { \"platform\": { \"planned\": \"3\" } },"
+"      \"origin\": [ { \"location\": { \"description\": \"London Waterloo\" } } ] }"
 "  ]"
 "}";
 
-/* Cancelled service. */
+/* Cancelled departure. */
 static const char CANCEL_JSON[] =
 "{"
-"  \"location\": { \"name\": \"Guildford\", \"crs\": \"GLD\" },"
+"  \"query\": { \"location\": { \"description\": \"Guildford\", \"shortCodes\": [\"GLD\"] } },"
 "  \"services\": ["
-"    { \"locationDetail\": {"
-"        \"gbttBookedDeparture\": \"1100\","
-"        \"realtimeDeparture\": \"1100\","
-"        \"platform\": \"1\","
-"        \"displayAs\": \"CANCELLED\","
-"        \"destination\": [ { \"description\": \"London Waterloo\" } ],"
-"        \"cancelReasonCode\": \"OA\""
-"      },"
-"      \"atocName\": \"South Western Railway\" }"
+"    { \"scheduleMetadata\": { \"operator\": { \"name\": \"Great Western Railway\" } },"
+"      \"temporalData\": {"
+"        \"departure\": { \"scheduleAdvertised\": \"2026-06-19T11:00:00\","
+"                       \"isCancelled\": true },"
+"        \"displayAs\": \"CANCELLED_CALL\" },"
+"      \"locationMetadata\": { \"platform\": { \"planned\": \"1\" } },"
+"      \"destination\": [ { \"location\": { \"description\": \"Reading\" } } ] }"
 "  ]"
 "}";
 
-/* Service with no relevant leg (no gbttBookedDeparture) — should be skipped. */
+/* A service with only an arrival leg — skipped on a departures board. */
 static const char SKIP_JSON[] =
 "{"
-"  \"location\": { \"name\": \"Test\", \"crs\": \"TST\" },"
+"  \"query\": { \"location\": { \"description\": \"Test\", \"shortCodes\": [\"TST\"] } },"
 "  \"services\": ["
-"    { \"locationDetail\": {"
-"        \"displayAs\": \"ORIGIN\","
-"        \"destination\": [ { \"description\": \"Somewhere\" } ]"
-"      },"
-"      \"atocName\": \"Test Operator\" }"
+"    { \"scheduleMetadata\": { \"operator\": { \"name\": \"Test Operator\" } },"
+"      \"temporalData\": {"
+"        \"arrival\": { \"scheduleAdvertised\": \"2026-06-19T10:00:00\" },"
+"        \"displayAs\": \"TERMINATES\" },"
+"      \"origin\": [ { \"location\": { \"description\": \"Somewhere\" } } ] }"
 "  ]"
 "}";
 
-/* Empty services array. */
 static const char EMPTY_JSON[] =
-"{ \"location\": { \"name\": \"Guildford\", \"crs\": \"GLD\" },"
+"{ \"query\": { \"location\": { \"description\": \"Guildford\", \"shortCodes\": [\"GLD\"] } },"
 "  \"services\": [] }";
 
 /* ---- test cases ----------------------------------------------------- */
@@ -119,24 +119,23 @@ static void test_departures(void)
     int rc = rtt_parse(DEP_JSON, RTT_DEPARTURES, &b, err, sizeof err);
     CHECK(rc == 0, "parse succeeds");
     CHECK(STREQ(b.name, "Guildford"), "station name");
-    CHECK(STREQ(b.crs, "GLD"), "CRS");
+    CHECK(STREQ(b.crs, "GLD"), "CRS from shortCodes");
     CHECK(b.count == 2, "two services");
 
     const rtt_service *s0 = &b.services[0];
-    CHECK(STREQ(s0->time, "10:10"), "svc0 time formatted");
+    CHECK(STREQ(s0->time, "21:39"), "svc0 time from ISO");
     CHECK(STREQ(s0->place, "London Waterloo"), "svc0 destination");
-    CHECK(STREQ(s0->platform, "2"), "svc0 platform");
+    CHECK(STREQ(s0->platform, "3"), "svc0 platform (planned)");
     CHECK(STREQ(s0->expected, "On time"), "svc0 on time");
     CHECK(s0->cancelled == 0, "svc0 not cancelled");
     CHECK(s0->delayed == 0, "svc0 not delayed");
     CHECK(STREQ(s0->operator_, "South Western Railway"), "svc0 operator");
 
     const rtt_service *s1 = &b.services[1];
-    CHECK(STREQ(s1->time, "10:25"), "svc1 booked time");
-    CHECK(STREQ(s1->expected, "10:31"), "svc1 realtime");
+    CHECK(STREQ(s1->time, "21:50"), "svc1 booked time");
+    CHECK(STREQ(s1->expected, "21:56"), "svc1 realtime forecast");
     CHECK(s1->delayed == 1, "svc1 delayed");
-    CHECK(s1->cancelled == 0, "svc1 not cancelled");
-    CHECK(STREQ(s1->platform, ""), "svc1 no platform");
+    CHECK(STREQ(s1->platform, "5"), "svc1 platform (forecast fallback)");
 }
 
 static void test_arrivals(void)
@@ -147,7 +146,7 @@ static void test_arrivals(void)
     int rc = rtt_parse(ARR_JSON, RTT_ARRIVALS, &b, err, sizeof err);
     CHECK(rc == 0, "parse succeeds");
     CHECK(b.count == 1, "one service");
-    CHECK(STREQ(b.services[0].time, "09:42"), "arrival time formatted");
+    CHECK(STREQ(b.services[0].time, "09:42"), "arrival time from ISO");
     CHECK(STREQ(b.services[0].place, "London Waterloo"), "origin shown");
     CHECK(STREQ(b.services[0].platform, "3"), "platform");
     CHECK(STREQ(b.services[0].expected, "On time"), "on time");
@@ -161,7 +160,7 @@ static void test_cancelled(void)
     int rc = rtt_parse(CANCEL_JSON, RTT_DEPARTURES, &b, err, sizeof err);
     CHECK(rc == 0, "parse succeeds");
     CHECK(b.count == 1, "one service");
-    CHECK(b.services[0].cancelled == 1, "marked cancelled");
+    CHECK(b.services[0].cancelled == 1, "marked cancelled (isCancelled)");
     CHECK(STREQ(b.services[0].expected, "Cancelled"), "expected text");
 }
 
@@ -170,10 +169,9 @@ static void test_skip_no_leg(void)
     printf("\n[skip service with no relevant leg]\n");
     rtt_board b;
     char err[160] = {0};
-    /* Departures board — no gbttBookedDeparture, service must be skipped. */
     int rc = rtt_parse(SKIP_JSON, RTT_DEPARTURES, &b, err, sizeof err);
     CHECK(rc == 0, "parse succeeds");
-    CHECK(b.count == 0, "no services (skip origin-only entry)");
+    CHECK(b.count == 0, "no services (skip arrival-only entry)");
 }
 
 static void test_empty(void)
@@ -210,7 +208,7 @@ static void test_null_input(void)
 
 int main(void)
 {
-    printf("=== rtt_parse unit tests ===\n");
+    printf("=== rtt_parse unit tests (Next Gen API) ===\n");
     test_departures();
     test_arrivals();
     test_cancelled();

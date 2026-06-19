@@ -14,7 +14,7 @@ Native PocketBook app showing live UK train **Departures** and **Arrivals** from
 ## Requirements
 
 - PocketBook e-reader with stock firmware (tested on InkView SDK 6.3.0 target)
-- [Realtime Trains API](https://www.realtimetrains.co.uk/about/developer/pull/docs/) account (free tier available) — provides a `rttapi_*` username and password
+- A [Realtime Trains **Next Generation** API](https://api-portal.rtt.io/) token (sign up at the API portal). This is a Bearer **refresh token** (a JWT); InkStation exchanges it for a short-lived access token automatically. (Note: this is *not* the older `api.rtt.io/api/v1` Basic-auth API — that one is not used.)
 
 ## Build
 
@@ -101,11 +101,11 @@ containing one line:
 rtt_refresh_token=<your RTT API token>
 ```
 
-The token may be either a **Bearer token** (e.g. an `eyJ...` JWT) or
-`user:pass` for **HTTP Basic** — the app chooses the scheme automatically based
-on whether the value contains a `:`. The token is stored only on the device and
-is **never committed to the repo or baked into the binary**. If it is missing,
-station boards show *"No RTT token set"*.
+This is the RTT Next Generation API **refresh token** (a Bearer JWT, `eyJ...`)
+from [api-portal.rtt.io](https://api-portal.rtt.io/). InkStation exchanges it for
+a short-lived access token at runtime and caches it. The token is stored only on
+the device and is **never committed to the repo or baked into the binary**. If it
+is missing, station boards show *"No RTT token set"*.
 
 ### Provisioning the token (recommended)
 

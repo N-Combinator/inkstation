@@ -1,5 +1,7 @@
 # InkStation
 
+![Downloads](https://img.shields.io/github/downloads/N-Combinator/inkstation/total)
+
 Native PocketBook app showing live UK train **Departures** and **Arrivals** from the [Realtime Trains](https://www.realtimetrains.co.uk/) API. Runs on stock firmware via the official InkView SDK — no KOReader, no jailbreak.
 
 ## Features

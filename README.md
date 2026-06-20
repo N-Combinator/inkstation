@@ -1,4 +1,4 @@
-# InkStation
+# InkStation (why not?)
 
 ![Downloads](https://img.shields.io/github/downloads/N-Combinator/inkstation/total)
 

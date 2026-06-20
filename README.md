@@ -4,6 +4,12 @@
 
 Native PocketBook app showing live UK train **Departures** and **Arrivals** from the [Realtime Trains](https://www.realtimetrains.co.uk/) API. Runs on stock firmware via the official InkView SDK — no KOReader, no jailbreak.
 
+## Screenshots
+
+<img src="screenshots/inkstation_demo.jpg" alt="InkStation showing live Guildford departures on a PocketBook e-reader" width="320">
+
+*Live Guildford departures on a PocketBook, straight from the Realtime Trains API.*
+
 ## Features
 
 - Offline station search — 2 600+ GB National Rail stations bundled, no network needed to find a station

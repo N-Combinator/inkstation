@@ -14,3 +14,6 @@ build/
 *.conf
 inkstation.cfg
 rtt_token.txt
+
+# Cross-compiler host-library shim (see deploy.sh)
+/.pb-hostlibs/

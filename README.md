@@ -1,14 +1,87 @@
 # InkStation (why not?)
 
+[![Latest release](https://img.shields.io/github/v/release/N-Combinator/inkstation)](https://github.com/N-Combinator/inkstation/releases/latest)
 ![Downloads](https://img.shields.io/github/downloads/N-Combinator/inkstation/total)
 
 Native PocketBook app showing live UK train **Departures** and **Arrivals** from the [Realtime Trains](https://www.realtimetrains.co.uk/) API. Runs on stock firmware via the official InkView SDK — no KOReader, no jailbreak.
+
+**Contents**
+
+- [Screenshots](#screenshots)
+- [Install](#install)
+- [Getting an API token](#getting-an-api-token)
+- [Features](#features)
+- [Usage](#usage)
+- [Building from source](BUILDING.md)
 
 ## Screenshots
 
 <img src="screenshots/inkstation_demo.jpg" alt="InkStation showing live Guildford departures on a PocketBook e-reader" width="320">
 
 *Live Guildford departures on a PocketBook, straight from the Realtime Trains API.*
+
+## Install
+
+**You do not need to build anything.** Every release ships a ready-to-run
+`inkstation.app`; the source build is only for people who want to change the
+code (see [BUILDING.md](BUILDING.md)).
+
+1. Download `inkstation-<version>.zip` from the
+   [latest release](https://github.com/N-Combinator/inkstation/releases/latest)
+   and unzip it — inside is a single file, `inkstation.app`. (It ships zipped
+   because GitHub refuses release assets with an `.app` extension.)
+2. Connect the reader over USB (or pull its SD card) and copy `inkstation.app`
+   into the `applications/` folder of the storage the reader exposes.
+3. **Add your API token** — the app needs one to show any board. In the same
+   storage, create `system/config/inkstation.conf` (on the device this path is
+   `/mnt/ext1/system/config/inkstation.conf`) containing one line:
+
+   ```
+   rtt_refresh_token=<your RTT refresh token>
+   ```
+
+   Without it, boards show *"No RTT token set"*. See
+   [Getting an API token](#getting-an-api-token).
+4. Eject the reader and launch **InkStation** from its Applications menu.
+
+That is the whole install. A PocketBook `.app` is a plain ARM executable that
+the launcher runs — there is no signing, no store, no firmware change, and
+uninstalling is deleting the file. The token lives only on your device: it is
+never committed to this repo or baked into the binary.
+
+Optionally verify the download against the `SHA256SUMS.txt` published next to
+the zip — it covers both the archive and the `inkstation.app` inside it, so run
+it from the folder holding the downloaded zip and the unzipped binary:
+
+```bash
+sha256sum -c SHA256SUMS.txt
+```
+
+Every release binary is built by
+[GitHub Actions](.github/workflows/release.yml) from the tagged source, so the
+build log for the exact file you downloaded is public under the repo's Actions
+tab.
+
+**Device support.** The binary is an ARM 32-bit ELF built against the official
+SDK (`SDK-B288`, i.e. SDK_6.3.0 branch `6.5`) and targets stock PocketBook
+firmware. It will **not** run on the newer 64-bit models — the InkPad One and
+anything else on the Rockchip RK3566 platform — because there is no public
+InkView SDK for that architecture yet; KOReader hit the same wall on those
+devices. If it works, or fails to launch, on your model, please open an issue
+naming the model and firmware version so this section can list what is actually
+verified.
+
+## Getting an API token
+
+InkStation talks to the [Realtime Trains **Next Generation**
+API](https://api-portal.rtt.io/). Sign up there and take the **refresh token** —
+a Bearer JWT starting `eyJ...`. InkStation exchanges it for a short-lived access
+token automatically and caches that on the device.
+
+(This is *not* the older `api.rtt.io/api/v1` Basic-auth API; that one is unused.)
+
+If you build from source, `deploy.sh` can write the config file to the device
+for you — see [BUILDING.md](BUILDING.md).
 
 ## Features
 
@@ -18,128 +91,6 @@ Native PocketBook app showing live UK train **Departures** and **Arrivals** from
 - Refresh button + hardware OK key
 - WiFi keep-alive: recovers silently from firmware idle-timer power-downs
 - On-screen Back button (works on touch-only PocketBook models)
-
-## Requirements
-
-- PocketBook e-reader with stock firmware (tested on InkView SDK 6.3.0 target)
-- A [Realtime Trains **Next Generation** API](https://api-portal.rtt.io/) token (sign up at the API portal). This is a Bearer **refresh token** (a JWT); InkStation exchanges it for a short-lived access token automatically. (Note: this is *not* the older `api.rtt.io/api/v1` Basic-auth API — that one is not used.)
-
-## Build
-
-Cross-compile with the [PocketBook SDK 6.3.0](https://github.com/pocketbook/SDK_6.3.0) (`6.5` branch → `SDK-B288/`). The toolchain binaries are Linux x86_64 only.
-
-```bash
-cmake -B build \
-      -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm-obreey.cmake \
-      -DPB_SDK_ROOT=/path/to/SDK-B288
-cmake --build build
-# Produces: build/inkstation.app
-```
-
-## Deploy
-
-`deploy.sh` is a one-command **pull → build → install** for the device, with a
-flag to choose wired (USB) or wireless (WiFi). It defaults the project dir to its
-own location and the SDK to `$PB_SDK_ROOT` (or `~/pocketbook-sdk/SDK-B288`).
-
-```bash
-./deploy.sh                            # wired: build + copy over USB (default)
-./deploy.sh --usb --pull               # git pull, clean rebuild, copy over USB
-./deploy.sh --wifi --find              # wireless: build + install to auto-detected device
-./deploy.sh --wifi --ip 192.168.1.42   # wireless: build + install to a known IP
-./deploy.sh --build-only               # just cross-compile, don't install
-```
-
-Or via the `Makefile`: `make deploy`, `make deploy-wifi IP=...`, `make build`, `make test`.
-
-### Wired (USB)
-
-1. Connect the reader over USB and allow storage access on the device.
-2. `./deploy.sh --usb` — builds, then copies `build/inkstation.app` into the
-   device's mounted `applications/` folder (auto-detected under `/media/$USER/*/`).
-3. Safely eject, then launch **InkStation** from the Applications menu.
-
-### Wireless (WiFi)
-
-The wireless mode installs over the network. You must first set up a **WiFi drop
-point** on the reader — this is what receives the binary:
-
-> **Set up the drop point first.** Install [**inkshelf**](https://github.com/N-Combinator/inkshelf)
-> on the reader and open its **WiFi Book Drop** screen — that is the WiFi-drop
-> server InkStation deploys through (it advertises over mDNS so `--find` can
-> locate the device). See the inkshelf README for setup and the PIN.
-
-Two methods:
-
-```bash
-# (default) SCP the binary to applications/inkstation.app and relaunch.
-# Installs InkStation as its own app. Needs sshd on the reader (PocketBook
-# jailbreak / PBJB sshd).
-./deploy.sh --wifi --find            # or: --ip <device-ip>
-./deploy.sh --wifi --ip 192.168.1.42 --ssh
-
-# Push to inkshelf's WiFi-drop HTTP endpoint (parity with inkshelf's tooling).
-./deploy.sh --wifi --http-drop --ip 192.168.1.42 --pin 1234
-```
-
-> **`--http-drop` caveat.** inkshelf's `/deploy` endpoint writes the upload to
-> `applications/inkshelf.app` (it is inkshelf's own self-update path), so it
-> **replaces inkshelf** with the InkStation binary rather than installing a
-> separate `inkstation.app`. To run InkStation *alongside* inkshelf, use the
-> default `--ssh` method (or install once over USB). `--http-drop` is provided
-> for parity with inkshelf's deploy tooling.
-
-## Manual installation
-
-If you prefer not to use `deploy.sh`: copy `build/inkstation.app` to the
-PocketBook SD card under `applications/`, eject, and launch **InkStation** from
-the Applications menu.
-
-## Configuration
-
-InkStation reads its RTT API token at startup from the on-device config file:
-
-```
-/mnt/ext1/system/config/inkstation.conf
-```
-
-containing one line:
-
-```
-rtt_refresh_token=<your RTT API token>
-```
-
-This is the RTT Next Generation API **refresh token** (a Bearer JWT, `eyJ...`)
-from [api-portal.rtt.io](https://api-portal.rtt.io/). InkStation exchanges it for
-a short-lived access token at runtime and caches it. The token is stored only on
-the device and is **never committed to the repo or baked into the binary**. If it
-is missing, station boards show *"No RTT token set"*.
-
-### Provisioning the token (recommended)
-
-`deploy.sh` writes the config file to the device for you, so you don't have to
-create it by hand. Supply the token one of three ways (checked in order):
-
-```bash
-./deploy.sh --usb --rtt-token 'eyJ...'      # explicit flag
-RTT_TOKEN='eyJ...' ./deploy.sh --usb         # environment variable
-echo 'eyJ...' > rtt_token.txt && ./deploy.sh --usb   # gitignored local file
-```
-
-`rtt_token.txt` is in `.gitignore` and never leaves your machine. The same
-applies to `--wifi --ssh` deploys (the token is written over SSH). The
-`--http-drop` method cannot write the token — set it via USB/SSH or by hand.
-
-### By hand
-
-Alternatively, create `/mnt/ext1/system/config/inkstation.conf` on the SD card
-yourself with the `rtt_refresh_token=...` line above.
-
-### Regenerating the station list (developer only)
-
-```bash
-RTT_REFRESH_TOKEN='<token>' python3 tools/gen_stations.py > src/stations.h
-```
 
 ## Usage
 
@@ -151,37 +102,11 @@ RTT_REFRESH_TOKEN='<token>' python3 tools/gen_stations.py > src/stations.h
    - **"Refresh"** button or OK key to reload from the API
    - **Back** button or Back key to return to search
 
-## Host parser tests
+## Contributing
 
-The RTT JSON parser (`rtt_parse`) can be tested on the build host without the PocketBook SDK:
+Build instructions, the deploy tooling, the host test gate, the project layout
+and the release process live in **[BUILDING.md](BUILDING.md)**.
 
-```bash
-bash tests/run_host_tests.sh
-```
+## License
 
-Requires GCC with AddressSanitizer/UBSanitizer (standard on Linux).
-
-## Project structure
-
-```
-src/
-  main.c          InkView entry point
-  app.c/h         Navigation stack
-  ui.c/h          Drawing helpers, list widget, key classification
-  config.c/h      On-device key=value settings store
-  rtt.c/h         Realtime Trains API client (token auth + board parser)
-  screens.c/h     Station search and live board screens
-  http.c/h        libcurl GET wrapper (WiFi retry, logging)
-  net.c/h         WiFi keep-alive for PocketBook firmware
-  cJSON.c/h       Embedded JSON parser
-  stations.h      Bundled offline GB National Rail station list (generated)
-cmake/
-  toolchain-arm-obreey.cmake   PocketBook cross-compile toolchain
-tools/
-  gen_stations.py   Regenerates stations.h from the RTT API
-tests/
-  test_rtt.c        rtt_parse unit tests (host, no SDK needed)
-  run_host_tests.sh Test runner
-deploy.sh           one-command pull/build/install (USB or WiFi)
-Makefile            convenience targets wrapping deploy.sh
-```
+MIT.

@@ -174,10 +174,32 @@ build_app() {
     rm -rf build
   fi
 
+  # The SDK's cc1 (gcc 6.3, 2017) needs libmpfr.so.4; current distros ship only
+  # libmpfr.so.6 and package no compatible .so.4, so on a modern host the
+  # compiler dies with "error while loading shared libraries". The SDK bundles
+  # the right one in usr/lib — but that directory also holds 2017 builds of
+  # glib/icu/expat, which would shadow the host's own libraries for cmake and
+  # make, so link only the compiler's own dependencies into a private directory.
+  # It lives OUTSIDE build/ on purpose: the configure step below runs only when
+  # build/ does not exist yet, so creating build/<something> here would silently
+  # skip configuration.
+  local hostlibs="$PROJECT/.pb-hostlibs" lib
+  mkdir -p "$hostlibs"
+  for lib in libmpfr.so.4 libmpc.so.3 libgmp.so.10; do
+    if [ -e "$SDK/usr/lib/$lib" ]; then
+      ln -sfn "$SDK/usr/lib/$lib" "$hostlibs/$lib"
+    fi
+  done
+  export LD_LIBRARY_PATH="$hostlibs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
   if [ ! -d build ]; then
     echo ">> cmake configure (toolchain: cmake/toolchain-arm-obreey.cmake)"
+    # Release by default: it is what ships, and without a build type cmake
+    # compiles at -O0 and keeps every symbol. Override with
+    # CMAKE_BUILD_TYPE=Debug ./deploy.sh ...
     cmake -B build \
       -DCMAKE_TOOLCHAIN_FILE="$PROJECT/cmake/toolchain-arm-obreey.cmake" \
+      -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" \
       -DPB_SDK_ROOT="$SDK"
   fi
 

@@ -77,6 +77,11 @@ endif()
 # Some toolchains need libm explicitly for the math used by libcurl/inkview.
 target_link_libraries(inkstation.app PRIVATE m)
 
+# Release binaries are copied onto a reader, never debugged there, so strip the
+# symbol table at link time — it is a large share of the file. Debug builds keep
+# their symbols.
+target_link_options(inkstation.app PRIVATE $<$<CONFIG:Release>:-s>)
+
 # No "lib" prefix, keep the .app suffix exactly.
 set_target_properties(inkstation.app PROPERTIES
     PREFIX ""

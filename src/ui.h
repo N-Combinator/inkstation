@@ -28,9 +28,10 @@ const ui_fonts *ui_get_fonts(void);
 
 /* Chrome. Header draws the title bar; footer draws a centred hint line. The
  * header automatically shows an on-screen "Back" button whenever the nav stack
- * is deeper than the root screen, so Back is reachable by touch on any
- * PocketBook regardless of its hardware key layout (some models are
- * touch-only). Screens route taps through ui_back_button_hit(). */
+ * is deeper than the root screen, and an "Exit" button in the same corner on
+ * the root screen, so both are reachable by touch on any PocketBook regardless
+ * of its hardware key layout (some models are touch-only). Screens route taps
+ * through ui_back_button_hit() / ui_exit_button_hit(). */
 int  ui_header_height(void);
 int  ui_footer_height(void);
 void ui_draw_header(const char *title);
@@ -39,6 +40,10 @@ void ui_draw_footer(const char *hint);
 /* Returns non-zero if (x, y) falls on the on-screen Back button. Always 0 on
  * the root screen (no button is drawn there). */
 int  ui_back_button_hit(int x, int y);
+
+/* Returns non-zero if (x, y) falls on the root screen's Exit button. Always 0
+ * on any other screen. */
+int  ui_exit_button_hit(int x, int y);
 
 /* Push the whole framebuffer to the panel (full e-ink refresh). */
 void ui_flush_full(void);

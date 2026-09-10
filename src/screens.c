@@ -200,6 +200,8 @@ static int search_on_key(screen_t *self, int key)
     case UI_NAV_PAGE_UP:   if (ui_list_page(&d->list, -1)) search_draw(self); return 1;
     case UI_NAV_PAGE_DOWN: if (ui_list_page(&d->list, +1)) search_draw(self); return 1;
     case UI_NAV_SELECT:    search_open_selected(self); return 1;
+    /* The search screen is the root: Back/Home here closes the app. */
+    case UI_NAV_BACK:      CloseApp(); return 1;
     default:               return 0;
     }
 }
@@ -207,6 +209,10 @@ static int search_on_key(screen_t *self, int key)
 static int search_on_pointer(screen_t *self, int x, int y)
 {
     search_data *d = self->data;
+    if (ui_exit_button_hit(x, y)) {
+        CloseApp();
+        return 1;
+    }
     int by = ui_header_height();
     /* Tap on the search bar -> edit the query. */
     if (y >= by && y < by + SEARCH_BAR_H) {

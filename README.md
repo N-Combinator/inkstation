@@ -114,7 +114,7 @@ for you — see [BUILDING.md](BUILDING.md).
 - Toggle between Departures and Arrivals in one tap / one key press
 - Refresh button + hardware OK key
 - WiFi keep-alive: recovers silently from firmware idle-timer power-downs
-- On-screen Back button (works on touch-only PocketBook models)
+- On-screen Back and Exit buttons (work on touch-only PocketBook models)
 
 ## Usage
 
@@ -125,6 +125,7 @@ for you — see [BUILDING.md](BUILDING.md).
    - **"Show Arrivals" / "Show Departures"** button or ← / → keys to toggle mode
    - **"Refresh"** button or OK key to reload from the API
    - **Back** button or Back key to return to search
+5. On the search screen, the **Exit** button (top-right) or the Back key closes InkStation.
 
 ## Contributing
 

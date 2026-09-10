@@ -35,7 +35,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT="${INKSTATION_DIR:-$SCRIPT_DIR}"
 SDK="${PB_SDK_ROOT:-$HOME/pocketbook-sdk/SDK-B288}"
-APP="$PROJECT/build/inkstation.app"
+# Which PocketBook platform to build for:
+#   b288   (default) soft-float SDK-B288 build — every model except the ones below
+#   rk3566 hard-float build for the RK3566 readers (InkPad One, ...), whose
+#          32-bit userland only has /lib/ld-linux-armhf.so.3 and so cannot load
+#          the soft-float binary at all. See cmake/toolchain-armhf.cmake.
+# Each platform gets its own build directory, so switching between them never
+# reuses a CMake cache configured for the other toolchain.
+PB_PLATFORM="${PB_PLATFORM:-b288}"
+case "$PB_PLATFORM" in
+  b288)   BUILD_DIR="$PROJECT/build" ;;
+  rk3566) BUILD_DIR="$PROJECT/build-rk3566" ;;
+  *)      echo "!! unknown PB_PLATFORM '$PB_PLATFORM' (expected b288 or rk3566)" >&2; exit 2 ;;
+esac
+APP="$BUILD_DIR/inkstation.app"
 
 # WiFi defaults (match inkshelf's WiFi-drop server).
 INKSHELF_PORT=8080
@@ -165,14 +178,20 @@ provision_token() {
 
 # ---- build -------------------------------------------------------------------
 build_app() {
-  export PATH="$SDK/usr/bin:$PATH"
   cd "$PROJECT"
 
   if [ "$DO_PULL" = 1 ]; then
     echo ">> git pull"
     git pull
-    rm -rf build
+    rm -rf "$BUILD_DIR"
   fi
+
+  if [ "$PB_PLATFORM" = rk3566 ]; then
+    build_app_rk3566
+    return
+  fi
+
+  export PATH="$SDK/usr/bin:$PATH"
 
   # The SDK's cc1 (gcc 6.3, 2017) needs libmpfr.so.4; current distros ship only
   # libmpfr.so.6 and package no compatible .so.4, so on a modern host the
@@ -192,23 +211,53 @@ build_app() {
   done
   export LD_LIBRARY_PATH="$hostlibs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-  if [ ! -d build ]; then
+  if [ ! -d "$BUILD_DIR" ]; then
     echo ">> cmake configure (toolchain: cmake/toolchain-arm-obreey.cmake)"
     # Release by default: it is what ships, and without a build type cmake
     # compiles at -O0 and keeps every symbol. Override with
     # CMAKE_BUILD_TYPE=Debug ./deploy.sh ...
-    cmake -B build \
+    cmake -B "$BUILD_DIR" \
       -DCMAKE_TOOLCHAIN_FILE="$PROJECT/cmake/toolchain-arm-obreey.cmake" \
       -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" \
       -DPB_SDK_ROOT="$SDK"
   fi
 
   echo ">> build"
-  cmake --build build
+  cmake --build "$BUILD_DIR"
 
   echo ">> binary check:"
   file "$APP"
   file "$APP" | grep -q "ELF 32-bit.*ARM" || { echo "!! not an ARM binary — check the SDK" >&2; exit 1; }
+}
+
+# RK3566: the distribution's armhf cross compiler plus headers and link libraries
+# staged from the vendor SDK (tools/stage-rk3566-sdk.sh). Nothing from that SDK
+# is executed, and the libmpfr shim above is not needed.
+build_app_rk3566() {
+  command -v arm-linux-gnueabihf-gcc >/dev/null 2>&1 || {
+    echo "!! arm-linux-gnueabihf-gcc not found — apt install gcc-arm-linux-gnueabihf" >&2; exit 1; }
+  [ -f "${PB_HF_STAGE:-/nonexistent}/include/inkview.h" ] || {
+    echo "!! PB_HF_STAGE must point at the staged RK3566 SDK headers + libraries." >&2
+    echo "   Create it with: tools/stage-rk3566-sdk.sh /path/to/SDK-RK3566-6.11.7z <stage-dir>" >&2
+    exit 1; }
+
+  if [ ! -d "$BUILD_DIR" ]; then
+    echo ">> cmake configure (toolchain: cmake/toolchain-armhf.cmake)"
+    cmake -B "$BUILD_DIR" \
+      -DCMAKE_TOOLCHAIN_FILE="$PROJECT/cmake/toolchain-armhf.cmake" \
+      -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
+  fi
+
+  echo ">> build"
+  cmake --build "$BUILD_DIR"
+
+  # A soft-float binary would install fine and then never launch on these
+  # readers, so check the float ABI and loader, not just "ARM".
+  echo ">> binary check:"
+  file "$APP"
+  readelf -h "$APP" | grep -q 'hard-float ABI' \
+    && readelf -l "$APP" | grep -q '/lib/ld-linux-armhf.so.3' \
+    || { echo "!! not a hard-float armhf binary — check the toolchain" >&2; exit 1; }
 }
 
 # ---- wired (USB) deploy ------------------------------------------------------

@@ -9,6 +9,7 @@ Native PocketBook app showing live UK train **Departures** and **Arrivals** from
 
 - [Screenshots](#screenshots)
 - [Install](#install)
+- [Which file do I need?](#which-file-do-i-need)
 - [Getting an API token](#getting-an-api-token)
 - [Features](#features)
 - [Usage](#usage)
@@ -26,10 +27,13 @@ Native PocketBook app showing live UK train **Departures** and **Arrivals** from
 `inkstation.app`; the source build is only for people who want to change the
 code (see [BUILDING.md](BUILDING.md)).
 
-1. Download `inkstation-<version>.zip` from the
+1. Download the zip for your reader from the
    [latest release](https://github.com/N-Combinator/inkstation/releases/latest)
-   and unzip it — inside is a single file, `inkstation.app`. (It ships zipped
-   because GitHub refuses release assets with an `.app` extension.)
+   — `inkstation-<version>-b288.zip` for most PocketBooks, or
+   `inkstation-<version>-rk3566.zip` for the InkPad One and other RK3566 models
+   (see [Which file do I need?](#which-file-do-i-need)). Unzip it: inside is a
+   single file, `inkstation.app`. (It ships zipped because GitHub refuses release
+   assets with an `.app` extension.)
 2. Connect the reader over USB (or pull its SD card) and copy `inkstation.app`
    into the `applications/` folder of the storage the reader exposes.
 3. **Add your API token** — the app needs one to show any board. In the same
@@ -49,27 +53,47 @@ the launcher runs — there is no signing, no store, no firmware change, and
 uninstalling is deleting the file. The token lives only on your device: it is
 never committed to this repo or baked into the binary.
 
-Optionally verify the download against the `SHA256SUMS.txt` published next to
-the zip — it covers both the archive and the `inkstation.app` inside it, so run
-it from the folder holding the downloaded zip and the unzipped binary:
+Optionally verify the download against the `SHA256SUMS.txt` published with the
+release. It lists both zips, so tell `sha256sum` to skip the one you did not
+download:
 
 ```bash
-sha256sum -c SHA256SUMS.txt
+sha256sum -c --ignore-missing SHA256SUMS.txt
 ```
+
+The same file carries, as a comment, the hash of the `inkstation.app` inside each
+zip — if you also want to check the file that lands on the reader.
 
 Every release binary is built by
 [GitHub Actions](.github/workflows/release.yml) from the tagged source, so the
 build log for the exact file you downloaded is public under the repo's Actions
 tab.
 
-**Device support.** The binary is an ARM 32-bit ELF built against the official
-SDK (`SDK-B288`, i.e. SDK_6.3.0 branch `6.5`) and targets stock PocketBook
-firmware. It will **not** run on the newer 64-bit models — the InkPad One and
-anything else on the Rockchip RK3566 platform — because there is no public
-InkView SDK for that architecture yet; KOReader hit the same wall on those
-devices. If it works, or fails to launch, on your model, please open an issue
-naming the model and firmware version so this section can list what is actually
-verified.
+### Which file do I need?
+
+PocketBook readers come in two userland ABIs, and a binary built for one cannot
+even be loaded on the other — the launcher simply does nothing.
+
+| Reader | Download |
+|---|---|
+| **InkPad One** (PB1030) and other models on the Rockchip **RK3566** platform | `inkstation-<version>-rk3566.zip` |
+| Every other PocketBook on stock firmware | `inkstation-<version>-b288.zip` |
+
+Why: the RK3566 readers pair a 64-bit kernel with a 32-bit ARM **hard-float**
+userland that only ships `/lib/ld-linux-armhf.so.3`. The classic build is
+soft-float and asks for `/lib/ld-linux.so.3`, which is not there. So it is not a
+64-bit problem, and the RK3566 build is still a 32-bit ARM binary.
+
+Not sure which one you have? Try `b288` first; if InkStation does not start,
+delete it and copy the `rk3566` one instead. Nothing gets installed either way,
+so picking the wrong one is harmless. Release v1.0.0 contains only the B288
+build.
+
+**Status of the RK3566 build:** built against PocketBook's SDK 6.11 and checked
+to be a hard-float binary, but not yet run on a device by the maintainers — that
+includes the token file location, which is assumed to be the same
+`system/config/` path. If you try it, please open an issue saying whether it
+starts, with your model and firmware version.
 
 ## Getting an API token
 

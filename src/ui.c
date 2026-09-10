@@ -66,15 +66,17 @@ void ui_draw_header(const char *title)
 
     FillArea(0, 0, w, HEADER_H, WHITE);
 
-    /* Non-root screens get a tappable Back button so navigation never depends
-     * on a particular hardware key being present. */
-    if (nav_depth() > 1) {
+    /* Every screen gets a tappable corner button so navigation never depends
+     * on a particular hardware key being present: Back on non-root screens,
+     * and Exit on the root screen, where leaving means closing the app. */
+    {
         int bx, by, bw, bh;
         back_button_rect(&bx, &by, &bw, &bh);
         DrawRect(bx, by, bw, bh, BLACK);
         DrawRect(bx + 1, by + 1, bw - 2, bh - 2, BLACK);
         SetFont(g_fonts.sub, BLACK);
-        DrawTextRect(bx, by, bw, bh, "\xE2\x80\xB9 Back",
+        DrawTextRect(bx, by, bw, bh,
+                     nav_depth() > 1 ? "\xE2\x80\xB9 Back" : "Exit",
                      ALIGN_CENTER | VALIGN_MIDDLE);
         title_w = bx - PAD_X - 12;
         if (title_w < 0) title_w = 0;
@@ -94,6 +96,15 @@ int ui_back_button_hit(int x, int y)
     back_button_rect(&bx, &by, &bw, &bh);
     /* Generous touch target: forgive a few px around the drawn box and accept
      * the full header height so a fat-finger tap still registers. */
+    return x >= bx - 8 && x <= bx + bw + 8 && y >= 0 && y <= HEADER_H;
+}
+
+int ui_exit_button_hit(int x, int y)
+{
+    if (nav_depth() > 1) return 0;
+    int bx, by, bw, bh;
+    back_button_rect(&bx, &by, &bw, &bh);
+    /* Same forgiving target as Back: the drawn box plus a few px, full header height. */
     return x >= bx - 8 && x <= bx + bw + 8 && y >= 0 && y <= HEADER_H;
 }
 

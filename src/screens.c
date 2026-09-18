@@ -112,6 +112,8 @@ static void search_draw(screen_t *self)
     snprintf(foot, sizeof foot, "q=\"%s\"  matches=%d   \xE2\x80\xA2   OK: open  \xE2\x80\xA2  tap bar: edit",
              d->query, d->n);
     ui_draw_footer(foot);
+    ui_draw_pager(d->list.top > 0,
+                  d->list.top + d->list.per_page < d->list.count);
 
     ui_flush_full();
 
@@ -219,6 +221,12 @@ static int search_on_pointer(screen_t *self, int x, int y)
         search_open_keyboard(self);
         return 1;
     }
+    int dir = ui_pager_hit(x, y);
+    if (dir) {
+        if (ui_list_page(&d->list, dir)) search_draw(self);
+        return 1;
+    }
+
     int row = ui_list_hit(&d->list, x, y);
     if (row >= 0) {
         d->list.selected = row;
@@ -318,7 +326,7 @@ static void board_buttons(int *tx, int *rx, int *by, int *bw, int *bh)
 {
     int w = ScreenWidth();
     int margin = 16;
-    *by = ScreenHeight() - ui_footer_height() - BTN_ROW_H + 8;
+    *by = ui_screen_height() - ui_footer_height() - BTN_ROW_H + 8;
     *bh = BTN_ROW_H - 16;
     *bw = (w - 2 * margin - BTN_GAP) / 2;
     *tx = margin;

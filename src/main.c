@@ -33,6 +33,10 @@ static int inkstation_handler(int type, int par1, int par2)
 {
     switch (type) {
     case EVT_INIT:
+        /* Own the whole screen: with the firmware panel on, the app's
+         * framebuffer is offset by its height and anything past the bottom
+         * wraps to the top. */
+        SetPanelType(PANEL_DISABLED);
         ui_fonts_open();
         load_credential();
         /* Bring WiFi up at launch. The firmware still powers the radio down on

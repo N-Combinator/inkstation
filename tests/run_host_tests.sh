@@ -65,6 +65,9 @@ void DrawLine(int x1, int y1, int x2, int y2, int color);
 void DrawRect(int x, int y, int w, int h, int color);
 void FillArea(int x, int y, int w, int h, int color);
 void FullUpdate(void);
+void SetPanelType(int type);
+int PanelHeight(void);
+#define PANEL_DISABLED 0
 #endif
 HDR
 

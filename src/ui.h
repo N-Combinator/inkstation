@@ -32,6 +32,11 @@ const ui_fonts *ui_get_fonts(void);
  * the root screen, so both are reachable by touch on any PocketBook regardless
  * of its hardware key layout (some models are touch-only). Screens route taps
  * through ui_back_button_hit() / ui_exit_button_hit(). */
+/* Usable screen height: a firmware panel offsets the app's framebuffer, and
+ * drawing past this wraps to the top of the screen (an InkPad One on 6.11 drew
+ * the page 136 px out of place, split in two). main.c switches the panel off;
+ * this keeps the layout right if some firmware keeps it. Use for layout. */
+int  ui_screen_height(void);
 int  ui_header_height(void);
 int  ui_footer_height(void);
 void ui_draw_header(const char *title);
@@ -44,6 +49,12 @@ int  ui_back_button_hit(int x, int y);
 /* Returns non-zero if (x, y) falls on the root screen's Exit button. Always 0
  * on any other screen. */
 int  ui_exit_button_hit(int x, int y);
+
+/* Page buttons inside the footer strip, for readers with no page keys at all
+ * (the InkPad One has only a power button). ui_pager_hit() returns -1 for the
+ * previous page, +1 for the next, 0 elsewhere. */
+void ui_draw_pager(int show_prev, int show_next);
+int  ui_pager_hit(int x, int y);
 
 /* Push the whole framebuffer to the panel (full e-ink refresh). */
 void ui_flush_full(void);

@@ -23,8 +23,12 @@ static int g_fail;
 /* ---- stubs ---------------------------------------------------------- */
 static char g_drawn[4096];      /* every string DrawTextRect was asked to paint */
 
-int  ScreenWidth(void)  { return 758; }
-int  ScreenHeight(void) { return 1024; }
+static int g_sw = 758, g_sh = 1024;     /* 6" panel unless a test changes it */
+static int g_panel;                     /* firmware panel height, 0 = none */
+int  ScreenWidth(void)  { return g_sw; }
+int  ScreenHeight(void) { return g_sh; }
+int  PanelHeight(void)  { return g_panel; }
+void SetPanelType(int type) { (void)type; }
 ifont *OpenFont(const char *n, int s, int a) { (void)n; (void)s; (void)a; return (ifont *)1; }
 void CloseFont(ifont *f) { (void)f; }
 void SetFont(ifont *f, int c) { (void)f; (void)c; }
@@ -75,6 +79,26 @@ int main(void)
     CHECK(ui_nav_classify(IV_KEY_BACK) == UI_NAV_BACK, "IV_KEY_BACK -> BACK");
     CHECK(ui_nav_classify(IV_KEY_HOME) == UI_NAV_BACK, "IV_KEY_HOME -> BACK");
     CHECK(ui_nav_classify(IV_KEY_OK)   != UI_NAV_BACK, "IV_KEY_OK is not BACK");
+
+    /* A firmware panel offsets the framebuffer: laying out to the full
+     * ScreenHeight() wrapped the bottom of the page onto the top of the screen
+     * (InkPad One, 6.11, 136 px out of place). */
+    printf("layout under a 136 px firmware panel (1404x1872):\n");
+    g_sw = 1404; g_sh = 1872; g_panel = 136;
+    CHECK(ui_screen_height() == 1736,    "usable height excludes the panel");
+    CHECK(ui_pager_hit(100, 1700) == -1, "previous-page button is in the footer");
+    CHECK(ui_pager_hit(1300, 1700) == 1, "next-page button at the other end");
+    CHECK(ui_pager_hit(702, 1700) == 0,  "the hint between them is not a page tap");
+    CHECK(ui_pager_hit(100, 1800) == 0,  "nothing responds in the wrapped strip");
+    g_panel = 1500;
+    CHECK(ui_screen_height() == 1872,    "an implausible panel height is ignored");
+
+    printf("page buttons on a 758x1024 panel:\n");
+    g_sw = 758; g_sh = 1024; g_panel = 0;
+    CHECK(ui_pager_hit(99, 1000) == -1,  "tap on the previous-page button");
+    CHECK(ui_pager_hit(659, 1000) == 1,  "tap on the next-page button");
+    CHECK(ui_pager_hit(379, 1000) == 0,  "tap on the hint between them");
+    CHECK(ui_pager_hit(99, 900) == 0,    "tap above the footer is not paging");
 
     if (g_fail) { printf("ui: FAILED (%d)\n", g_fail); return 1; }
     printf("ui: all passed\n");
